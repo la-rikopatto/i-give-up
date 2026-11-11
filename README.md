@@ -9,9 +9,16 @@
 
 `index.html` をブラウザで開くだけで動きます（外部通信なし）。
 
+## PWA
+
+GitHub Pages などの HTTPS で公開すると、ホーム画面に追加してアプリとして使えます（iPhone は Safari の共有 →「ホーム画面に追加」）。一度開けばオフラインでも表示できます。
+
+更新を公開するときは `sw.js` の `CACHE` の番号を上げてください（例：`busmap-v2`）。
+
 ## 構成
 
 - `index.html` — ビルド済みのアプリ本体
+- `manifest.webmanifest` / `sw.js` / `icons/` — PWA 用
 - `src/` — HTML/CSS（head.html）、描画（core2.js）、UI（ui.js）、ビルドスクリプト
 - `data/` — 路線ネットワーク（net_all.json）と背景地図（base.json）
 - `tests/` — Playwright による表示チェック

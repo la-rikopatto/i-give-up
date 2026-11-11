@@ -2,8 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f0ede7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="バスマップ">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>坂戸・鶴ヶ島 コミュニティバス マップ</title>
 <style>
 :root{
@@ -460,7 +468,7 @@ const cityName=c=>c==='tg'?'鶴ヶ島市':c==='both'?'坂戸市／鶴ヶ島市':
 let toastT=0;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),1500)}
 // ---------- theme
 let themeMode=store.get('bus.theme','auto');const mq=matchMedia('(prefers-color-scheme: dark)');
-function applyTheme(){const d=themeMode==='auto'?(mq.matches?'dark':'light'):themeMode;document.documentElement.dataset.theme=d;COL=THEMES[d];base.valid=false;$('theme').innerHTML=I[themeMode==='auto'?'auto':themeMode==='dark'?'moon':'sun'];draw()}
+function applyTheme(){const d=themeMode==='auto'?(mq.matches?'dark':'light'):themeMode;document.documentElement.dataset.theme=d;{const tc=document.querySelector('meta[name=theme-color]');if(tc)tc.content=d==='dark'?'#1d222d':'#f0ede7';const sb=document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]');if(sb)sb.content=d==='dark'?'black':'default'}COL=THEMES[d];base.valid=false;$('theme').innerHTML=I[themeMode==='auto'?'auto':themeMode==='dark'?'moon':'sun'];draw()}
 $('theme').onclick=()=>{themeMode={auto:'light',light:'dark',dark:'auto'}[themeMode];store.set('bus.theme',themeMode);applyTheme();toast({auto:'外観：自動',light:'外観：ライト',dark:'外観：ダーク'}[themeMode])};
 mq.addEventListener&&mq.addEventListener('change',applyTheme);
 // ---------- map / diagram mode
@@ -645,6 +653,8 @@ function openHash(h0){const h=typeof h0==='string'?h0:location.hash;if(typeof h0
 addEventListener('hashchange',openHash);
 // ---------- init
 const initHash=(()=>{try{return location.hash}catch(e){return ''}})();resize();setSheet('mid');applyTheme();push(homePage(),false);setMode(store.get('bus.mode','map')==='metro'?'metro':'map',true);computeFit();fitBox(BOX,false);if(initHash.length>1)openHash(initHash);
+// PWA: service worker（対応環境のみ。失敗しても動作に影響なし）
+try{if('serviceWorker' in navigator&&window.isSecureContext&&window.top===window.self){const go=()=>navigator.serviceWorker.register('sw.js').catch(()=>{});document.readyState==='complete'?go():window.addEventListener('load',go)}}catch(e){}
 </script>
 </body>
 </html>
