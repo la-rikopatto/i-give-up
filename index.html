@@ -428,10 +428,13 @@ function render(){
   items.sort((a,b)=>dprio(b)-dprio(a));
   for(const c of items){const b=c._bb;let hi=-1;for(let i=0;i<dots.length;i++){const o=dots[i];if(b[0]-2<o[2]&&b[2]+2>o[0]&&b[1]-2<o[3]&&b[3]+2>o[1]){hi=i;break}}
     if(hi<0||c._onP||c._on0){c._want=true;c._dot=[b[0]-1,b[1]-1,b[2]+1,b[3]+1];dots.push(c._dot);stopsShown.push(c)}
-    else if(c._end){const h=stopsShown[hi];const A=[...h._P,...c._P];let bi=0,bj=0,bd=-1;for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++){const d=Math.hypot(A[i][0]-A[j][0],A[i][1]-A[j][1]);if(d>bd){bd=d;bi=i;bj=j}}
-      if(bd<=30){const ax=A[bj][0]-A[bi][0],ay=A[bj][1]-A[bi][1];A.sort((p,q)=>(p[0]*ax+p[1]*ay)-(q[0]*ax+q[1]*ay));h._caps=[A];h._P=A;h._pts=[...h._pts,...c._pts];h._r=Math.max(h._r,c._r);
-        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const [x,y] of A){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}const r=h._r,d=dots[hi];d[0]=x0-r-1;d[1]=y0-r-1;d[2]=x1+r+1;d[3]=y1+r+1;h._bb=[x0-r,y0-r,x1+r,y1+r];(window.__merged=window.__merged||[]).push(c.name+'→'+h.name)}
-      else{c._want=true;c._dot=null;(window.__forced=window.__forced||[]).push(c.name)}}}
+    else if(c._end){const h=stopsShown[hi];
+      // two different stops too close to draw full markers: show each as a small dot at its own place
+      const tiny=q=>{let mx=0,my=0;for(const [x,y] of q._P){mx+=x;my+=y}mx/=q._P.length;my/=q._P.length;const r=Math.min(q._r,2.3);q._P=[[mx,my]];q._caps=[q._P];q._r=r;q._bb=[mx-r,my-r,mx+r,my+r];return q._bb};
+      const hb=tiny(h),d=dots[hi];d[0]=hb[0]-.5;d[1]=hb[1]-.5;d[2]=hb[2]+.5;d[3]=hb[3]+.5;
+      const cb=tiny(c);c._want=true;let free=true;for(const o of dots)if(cb[0]-.5<o[2]&&cb[2]+.5>o[0]&&cb[1]-.5<o[3]&&cb[3]+.5>o[1]){free=false;break}
+      if(free){c._dot=[cb[0]-.5,cb[1]-.5,cb[2]+.5,cb[3]+.5];dots.push(c._dot);stopsShown.push(c);(window.__merged=window.__merged||[]).push(c.name+'|'+h.name)}
+      else{c._dot=null;(window.__forced=window.__forced||[]).push(c.name)}}}
   // pass 2: draw (animated)
   for(const c of CL){const al=step(c,'_a',c._want?1:0,70);const pk=step(c,'_p',c._onP?1:0,70);if(al<.02||!c._P)continue;
     const P=c._P,r=c._r+pk*2,isT=c.term,onR=c._onR;const multi=c.routes.length>1&&!sel;
