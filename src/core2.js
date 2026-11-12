@@ -9,7 +9,7 @@ const ROAD=toPath(dec(BASE.road),true);
 const R=NET.routes, S=NET.stops, RK={}, CL=NET.clusters;
 const ENDSTOP={};let CHN=[],MODE='map',BOX=[0,0,1,1],ZONES=[];
 R.forEach(r=>{RK[r.k]=r;const a=S[r.order[0]].name,b=S[r.order[r.order.length-1]].name;r.ends=r.loop?`${a} 発着・循環`:`${a} ⇄ ${b}`});
-function setGeo(name){MODE=name;const G=NET.geos[name];for(const k in ENDSTOP)delete ENDSTOP[k];
+function setGeo(name){MODE=name;R.forEach(r=>{r._legs=null});const G=NET.geos[name];for(const k in ENDSTOP)delete ENDSTOP[k];
   CHN=G.chains.map(p=>{const cum=[0];for(let i=1;i<p.length;i++)cum.push(cum[i-1]+Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]));return {p,cum}});
   S.forEach((s,i)=>{s.x=G.sp[i][0];s.y=G.sp[i][1]});CL.forEach((c,i)=>{c.c=G.cp[i];c._lv=null;c._side=null});
   let W0=1e9,H0=1e9,W1=-1e9,H1=-1e9;
@@ -45,7 +45,7 @@ function fitBox(b,anim=true,pad=36,maxZ=10){const i=insets();const aw=VW-i.l-i.r
   const cxw=(b[0]+b[2])/2,cyw=(b[1]+b[3])/2;flyTo(s,i.l+pad+aw/2-cxw*s,i.t+pad+ah/2-cyw*s,anim)}
 function computeFit(){const i=insets();fitS=Math.min((VW-i.l-i.r-48)/(BOX[2]-BOX[0]),(VH-i.t-i.b-48)/(BOX[3]-BOX[1]))}
 let anim=null;
-function flyTo(s,x,y,a){anim=null;if(!a){sc=s;tx=x;ty=y;draw();return}const s0=sc,x0=tx,y0=ty,t0=performance.now(),D=520;
+function flyTo(s,x,y,a){anim=null;springing=false;if(!a){sc=s;tx=x;ty=y;draw();return}const s0=sc,x0=tx,y0=ty,t0=performance.now(),D=520;
   // interpolate in world-center space for nicer motion
   const c0=[(VW/2-x0)/s0,(VH/2-y0)/s0],c1=[(VW/2-x)/s,(VH/2-y)/s];
   anim=t=>{let k=Math.min(1,(t-t0)/D);const e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;const ss=s0*Math.pow(s/s0,e);const c=[c0[0]+(c1[0]-c0[0])*e,c0[1]+(c1[1]-c0[1])*e];sc=ss;tx=VW/2-c[0]*ss;ty=VH/2-c[1]*ss;if(k>=1){sc=s;tx=x;ty=y;anim=null}};
@@ -54,13 +54,26 @@ const MAPB=[0,-27,1251,873];
 const camIn=()=>typeof camInsets==='function'?camInsets():{l:0,t:0,r:0,b:0};
 const curB=()=>{const b=MODE==='map'?MAPB:BOX,m=(MODE==='map'?.05:.07)*Math.max(b[2]-b[0],b[3]-b[1]);return [b[0]-m,b[1]-m,b[2]+m,b[3]+m]};
 const coverS=()=>{const i=camIn(),B=curB();return Math.min((VW-i.l-i.r)/(B[2]-B[0]),(VH-i.t-i.b)/(B[3]-B[1]))};
-const minS=()=>coverS(),maxS=()=>Math.max(fitS*22,minS()*8);
+const minS=()=>coverS(),maxS=()=>Math.max(MODE==='map'?4.4:3.2,minS()*3.2);
 function clampCam(){const B=curB();const i=camIn(),vw=VW-i.l-i.r,vh=VH-i.t-i.b,sm=coverS();
   if(sc<sm){const X=i.l+vw/2,Y=i.t+vh/2,f=sm/sc;tx=X-(X-tx)*f;ty=Y-(Y-ty)*f;sc=sm}
   const w=(B[2]-B[0])*sc,h=(B[3]-B[1])*sc;
   tx=w<=vw?i.l+(vw-w)/2-B[0]*sc:Math.min(i.l-B[0]*sc,Math.max(i.l+vw-B[2]*sc,tx));
   ty=h<=vh?i.t+(vh-h)/2-B[1]*sc:Math.min(i.t-B[1]*sc,Math.max(i.t+vh-B[3]*sc,ty))}
-function zoomAt(f,px,py){const ns=Math.max(minS(),Math.min(maxS(),sc*f));f=ns/sc;tx=px-(px-tx)*f;ty=py-(py-ty)*f;sc=ns}
+function zoomAt(f,px,py,loose){const lo=minS(),hi=maxS();const ns=loose?Math.max(lo*.3,Math.min(hi*3,sc*f)):Math.max(lo,Math.min(hi,sc*f));f=ns/sc;tx=px-(px-tx)*f;ty=py-(py-ty)*f;sc=ns}
+const rub=(x,D)=>Math.sign(x)*(1-1/(Math.abs(x)*.55/D+1))*D;
+// what the screen shows for a raw (finger-driven) camera: resisted beyond the limits
+function rubberCam(){const lo=minS(),hi=maxS(),i=camIn(),vw=VW-i.l-i.r,vh=VH-i.t-i.b,X=i.l+vw/2,Y=i.t+vh/2;let s=sc,x=tx,y=ty;
+  const ds=s<lo?lo*Math.pow(s/lo,.3):s>hi?hi*Math.pow(s/hi,.3):s;if(ds!==s){const f=ds/s;x=X-(X-x)*f;y=Y-(Y-y)*f;s=ds}
+  const B=curB(),w=(B[2]-B[0])*s,h=(B[3]-B[1])*s;
+  const cl=(v,a,b)=>Math.min(b,Math.max(a,v));
+  const cx_=w<=vw?i.l+(vw-w)/2-B[0]*s:cl(x,i.l+vw-B[2]*s,i.l-B[0]*s),cy_=h<=vh?i.t+(vh-h)/2-B[1]*s:cl(y,i.t+vh-B[3]*s,i.t-B[1]*s);
+  return [s,cx_+rub(x-cx_,vw),cy_+rub(y-cy_,vh)]}
+function clampedCam(){const s0=sc,x0=tx,y0=ty;clampCam();const r=[sc,tx,ty];sc=s0;tx=x0;ty=y0;return r}
+let springing=false;
+function settle(){const c=clampedCam();if(Math.abs(c[0]-sc)<1e-4*sc&&Math.abs(c[1]-tx)<.5&&Math.abs(c[2]-ty)<.5){sc=c[0];tx=c[1];ty=c[2];return false}
+  const s0=sc,x0=tx,y0=ty,t0=performance.now(),D=420;springing=true;
+  anim=t=>{let k=Math.min(1,(t-t0)/D);const e=1-Math.pow(1-k,4);sc=s0*Math.pow(c[0]/s0,e);tx=x0+(c[1]-x0)*e;ty=y0+(c[2]-y0)*e;if(k>=1){anim=null;springing=false}};draw();return true}
 let raf=0;function draw(){if(!raf)raf=requestAnimationFrame(frame)}
 function loop(){draw()}
 let needMore=false;
@@ -91,14 +104,31 @@ function renderBase(){const m=0.2;const ox=Math.round(VW*m),oy=Math.round(VH*m);
   const rw=Math.max(2.6,Math.min(5,2+z*.4));g.strokeStyle=COL.rail;g.lineWidth=rw*px;g.stroke(P.rail);g.strokeStyle=COL.railDash;g.lineWidth=(rw-1.6)*px;g.setLineDash([6*px,6*px]);g.stroke(P.rail);g.setLineDash([]);
   base.valid=true;base.s=sc;base.tx=tx;base.ty=ty;base.ox=ox;base.oy=oy}
 // ---------- state
-let sel=null,pick=null,filter='all',plan=null;
-const routeOn=k=>plan?plan.r.has(k):sel?k===sel:pick!=null?S[pick].allR.includes(k):true;
+let sel=null,pick=null,pick0=null,filter='all',plan=null;
+const pickR=k=>S[pick].allR.includes(k)||(pick0!=null&&S[pick0].allR.includes(k));
+const routeOn=k=>plan?plan.r.has(k):sel?k===sel:pick!=null?pickR(k):true;
+// ---------- path between two stops along a route's chains (for trip highlighting)
+function legSections(r,a,b){const key=MODE+'|'+a+'|'+b,memo=r._legs||(r._legs={});if(memo[key])return memo[key];
+  const len=e=>CHN[e].cum[CHN[e].cum.length-1];
+  const adj={};for(const [ca,ea,cb,eb] of r.cx){(adj[ca+'_'+ea]=adj[ca+'_'+ea]||[]).push([cb,eb]);(adj[cb+'_'+eb]=adj[cb+'_'+eb]||[]).push([ca,ea])}
+  const A=r.st.filter(x=>x[0]===a),B=r.st.filter(x=>x[0]===b);let best=null;
+  for(const [,e0,s0] of A){
+    for(const [,e1,s1] of B)if(e1===e0){const c=Math.abs(s1-s0);if(!best||c<best[0])best=[c,[[e0,s0,s1]]]}
+    const dist={},prev={},open=[];const push=(k,c,p,sec)=>{if(c<(dist[k]??1e18)){dist[k]=c;prev[k]=[p,sec];open.push([c,k])}};
+    push(e0+'_0',s0,null,[e0,s0,0]);push(e0+'_1',len(e0)-s0,null,[e0,s0,len(e0)]);
+    while(open.length){let bi=0;for(let i=1;i<open.length;i++)if(open[i][0]<open[bi][0])bi=i;const [c,k]=open.splice(bi,1)[0];if(c>dist[k])continue;
+      const [es,ens]=k.split('_');const e=+es,en=+ens,pos=en?len(e):0;
+      for(const [,e1,s1] of B)if(e1===e){const cc=c+Math.abs(s1-pos);if(!best||cc<best[0]){const secs=[[e,pos,s1]];let q=k;while(q){const [p,sec]=prev[q];if(sec)secs.unshift(sec);q=p}best=[cc,secs]}}
+      for(const [e2,en2] of adj[k]||[]){push(e2+'_'+en2,c,k,null);push(e2+'_'+(1-en2),c+len(e2),k,[e2,en2?len(e2):0,en2?0:len(e2)])}}}
+  return memo[key]=best?best[1]:[]}
 // ---------- label measurement
 const mcache=new Map();function tw(txt,font){const k=font+'|'+txt;let w=mcache.get(k);if(w==null){cx.font=font;w=cx.measureText(txt).width;mcache.set(k,w)}return w}
 const FONT='600 11.5px '+getComputedStyle(document.body).fontFamily, FONTB='700 13px '+getComputedStyle(document.body).fontFamily, FONTS='600 11px '+getComputedStyle(document.body).fontFamily, FONTC='600 15px '+getComputedStyle(document.body).fontFamily;
 // ---------- render
 function render(){
-  clampCam();
+  const held=dragging||pinching||dtz;let raw=null;
+  if(held){raw=[sc,tx,ty];const d=rubberCam();sc=d[0];tx=d[1];ty=d[2]}else if(!springing)clampCam();
+  if(render.ls!==sc){if(render.ls!=null&&typeof showScale==='function')showScale();render.ls=sc}
   const g=cx;g.setTransform(DPR,0,0,DPR,0,0);
   const moving=dragging||anim||inertia||pinching||ptrs.size>0;
   if(!moving&&(!base.valid||base.s!==sc||base.tx!==tx||base.ty!==ty))renderBase();
@@ -120,7 +150,7 @@ function render(){
   const MT=MODE==='metro';const lw=MT?Math.max(2.2,Math.min(5,1.3+z*.6)):Math.max(1.4,Math.min(3.2,0.9+z*.36)),selW=Math.max(3.2,Math.min(6,2.2+z*.55))+(MT?1.2:0);const spread=MT?sm(.8,1.8,z):sm(1.2,2.6,z);const SP=lw*(.35+.65*spread)+(MT?.9:.2)*spread;const CAS=1.5+.7*spread;
   g.setTransform(DPR,0,0,DPR,0,0);g.lineJoin='round';g.lineCap='round';
   const vis=R.filter(r=>filter==='all'||r.city===filter);
-  for(const r of R){const on=routeOn(r.k);step(r,'_a',vis.includes(r)?(fade&&!on?(sel||plan?.12:.18):1):0,70);step(r,'_w',(sel===r.k||(plan&&plan.r.has(r.k)))?1:0,80)}
+  for(const r of R){const on=routeOn(r.k);step(r,'_a',vis.includes(r)?(fade&&!on?(sel||plan?.12:.18):(plan&&plan.legs?.36:1)):0,70);step(r,'_w',sel===r.k?1:0,80)}
   const PX=CHN.map(c=>c.p.map(q=>[q[0]*sc+tx,q[1]*sc+ty]));const Rc0=MODE==='metro'?Math.max(5*sc,8):Math.max(3.2*sc,7);
   const sN=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1e-6;return [dx/l,dy/l,l]};
   const corner=(p,A,V,B,o1,o2,tight)=>{const Rc=tight?2.5:Rc0;const [ux,uy,la]=sN(A,V),[vx,vy,lc]=sN(V,B);const cr=ux*vy-uy*vx,dt=ux*vx+uy*vy,th=Math.atan2(Math.abs(cr),dt);
@@ -153,6 +183,23 @@ function render(){
   for(const r of drawn){const w=lw+(selW-lw)*r._w;g.globalAlpha=r._a;g.strokeStyle=COL.casing;g.lineWidth=w+CAS;g.stroke(paths.get(r))}
   for(const r of drawn){const w=lw+(selW-lw)*r._w;g.globalAlpha=r._a;g.strokeStyle=r.c;g.lineWidth=w;g.stroke(paths.get(r))}
   g.globalAlpha=1;
+  // the part of each line actually ridden on the selected trip
+  if(plan&&plan.legs){const ha=step(plan,'_ha',1,110);const TR=selW/2+CAS/2+3;
+    for(const leg of plan.legs){const r=RK[leg.k],pth=paths.get(r);if(!pth)continue;const tube=new Path2D();
+      for(let i=1;i<leg.stops.length;i++)for(const [e,s0,s1] of legSections(r,leg.stops[i-1],leg.stops[i])){const C=CHN[e],P=PX[e],o=r.off[e]*SP,a=Math.min(s0,s1),b=Math.max(s0,s1);
+        for(let j=1;j<P.length;j++){const c0=C.cum[j-1],c1=C.cum[j];if(c1<a||c0>b)continue;const [ux,uy,l]=sN(P[j-1],P[j]);const f0=Math.max(0,(a-c0)/((c1-c0)||1)),f1=Math.min(1,(b-c0)/((c1-c0)||1));const n=Math.max(1,Math.ceil((f1-f0)*l/4));
+          for(let k=0;k<=n;k++){const f=f0+(f1-f0)*k/n,x=P[j-1][0]+(P[j][0]-P[j-1][0])*f-uy*o,y=P[j-1][1]+(P[j][1]-P[j-1][1])*f+ux*o;if(x<-20||x>VW+20||y<-20||y>VH+20)continue;tube.moveTo(x+TR,y);tube.arc(x,y,TR,0,6.2832)}}}
+      g.save();g.clip(tube);g.globalAlpha=ha;g.strokeStyle=COL.casing;g.lineWidth=selW+CAS;g.stroke(pth);g.strokeStyle=r.c;g.lineWidth=selW;g.stroke(pth);g.restore()}
+    g.globalAlpha=1}
+  // coarse occupancy grid of the prominent lines, so labels can keep clear of them
+  const GC=4,GW=Math.ceil(VW/GC)+1,GH=Math.ceil(VH/GC)+1;if(!render.grid||render.grid.length!==GW*GH)render.grid=new Uint8Array(GW*GH);const grid=render.grid;grid.fill(0);
+  {const chR={},th=plan?.25:.5;for(const r of drawn){if(r._a<th)continue;for(const [e,of] of r.ch){const o=of*SP,c=chR[e]||(chR[e]=[o,o]);if(o<c[0])c[0]=o;if(o>c[1])c[1]=o}}
+    for(const e in chR){const P=PX[e],o0=chR[e][0],o1=chR[e][1],om=(o0+o1)/2,rad=Math.ceil(((o1-o0)/2+lw/2+1.5)/GC);
+      for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i];if(Math.max(a[0],b[0])<-20||Math.min(a[0],b[0])>VW+20||Math.max(a[1],b[1])<-20||Math.min(a[1],b[1])>VH+20)continue;
+        const [ux,uy,l]=sN(a,b),n=Math.max(1,Math.ceil(l/(GC*.9)));
+        for(let k=0;k<=n;k++){const gx=Math.floor((a[0]+(b[0]-a[0])*k/n-uy*om)/GC),gy=Math.floor((a[1]+(b[1]-a[1])*k/n+ux*om)/GC);if(gx<-rad||gx>=GW+rad||gy<-rad||gy>=GH+rad)continue;
+          for(let dy=-rad;dy<=rad;dy++){const yy=gy+dy;if(yy<0||yy>=GH)continue;for(let dx=-rad;dx<=rad;dx++){const xx=gx+dx;if(xx>=0&&xx<GW)grid[yy*GW+xx]=1}}}}}}
+  const lineHit=bb=>{let n=0;const x0=Math.max(0,Math.floor((bb[0]+1)/GC)),x1=Math.min(GW-1,Math.floor((bb[2]-1)/GC)),y0=Math.max(0,Math.floor((bb[1]+2.5)/GC)),y1=Math.min(GH-1,Math.floor((bb[3]-2.5)/GC));for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)n+=grid[y*GW+x];return n};
   const boxes=[],dots=[];const ov=(b,o,p)=>b[0]-p<o[2]&&b[2]+p>o[0]&&b[1]-p<o[3]&&b[3]+p>o[1];
   const hit=(b,p=0,own=null)=>{for(const o of boxes)if(ov(b,o,p))return true;for(const o of dots)if(o!==own&&ov(b,o,3))return true;return false};
   // ---- stops (small, native-style)
@@ -165,12 +212,12 @@ function render(){
     g.beginPath();g.moveTo(P[0][0],P[0][1]);for(let i=1;i<P.length;i++)g.lineTo(P[i][0],P[i][1]);
     g.strokeStyle=ring;g.lineWidth=2*r+sw;g.stroke();g.strokeStyle='#fff';g.lineWidth=2*r-sw;g.stroke()};
   // pass 1: geometry + eligibility
-  const items=[];window.__forced=[];
+  const items=[];window.__forced=[];window.__merged=[];
   for(const c of CL){const inF=filter==='all'||c.city===filter||c.city==='both';
-    const onR=plan?plan.c.has(c.id):sel?c.routes.includes(sel):true;const onP=pick!=null&&c.m.includes(pick);const isT=c.term;
+    const onR=plan?plan.c.has(c.id):sel?c.routes.includes(sel):true;const onP=pick!=null&&c.m.includes(pick);const on0=pick0!=null&&c.m.includes(pick0);const isT=c.term;
     c._want=false;c._dot=null;c._P=null;
-    const elig=inF&&(sel||plan?onR:pick!=null?(onP||c.routes.some(k=>S[pick].allR.includes(k))):(isT||z>1.6));
-    const G={},TG={};for(const i of c.m)for(const k of S[i].routes){if(plan?!plan.r.has(k):sel?(onR&&k!==sel):(pick!=null&&!S[pick].allR.includes(k)))continue;const q=RK[k]._sp&&RK[k]._a>.02?RK[k]._sp[i]:null;if(q){const e_=RK[k]._spc[i];(G[e_]=G[e_]||[]).push(q);if(RK[k].term.has(i))TG[e_]=1}}
+    const elig=inF&&(sel||plan?onR:pick!=null?(onP||on0||c.routes.some(pickR)):(isT||z>1.6));
+    const G={},TG={};for(const i of c.m)for(const k of S[i].routes){if(plan?!plan.r.has(k):sel?(onR&&k!==sel):(pick!=null&&!pickR(k)))continue;const q=RK[k]._sp&&RK[k]._a>.02?RK[k]._sp[i]:null;if(q){const e_=RK[k]._spc[i];(G[e_]=G[e_]||[]).push(q);if(RK[k].term.has(i))TG[e_]=1}}
     let grp=Object.keys(G).map(e=>({pts:G[e].slice(),main:G[e]}));
     if(!grp.length)continue;
     {let merged=true;while(merged&&grp.length>1){merged=false;
@@ -186,13 +233,16 @@ function render(){
     const P=caps.flat();c._caps=caps;c._end=Object.keys(TG).length>0;
     let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const [x,y] of P){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}
     let r=(isT?2.6:2.2)+sm(1.4,6,z)*1.6;if(sel&&onR)r+=.4;
-    c._P=P;c._r=r;c._bb=[x0-r,y0-r,x1+r,y1+r];c._onR=onR;c._onP=onP;
+    if(on0)r+=1.6;c._P=P;c._r=r;c._bb=[x0-r,y0-r,x1+r,y1+r];c._onR=onR;c._onP=onP;c._on0=on0;
     if((elig||(c._end&&inF&&!sel&&!plan&&pick==null))&&!(x1<-30||x0>VW+30||y1<-30||y0>VH+30))items.push(c)}
-  const dprio=c=>(c._onP?1e6:0)+(c._end?5e5:0)+(c.term?1e4:0)+(c._a>.5?2e3:0)+c.routes.length*100+c.m.length;
+  const dprio=c=>(c._onP?1e6:0)+(c._on0?9e5:0)+(c._end?5e5:0)+(c.term?1e4:0)+(c._a>.5?2e3:0)+c.routes.length*100+c.m.length;
   items.sort((a,b)=>dprio(b)-dprio(a));
-  for(const c of items){const b=c._bb;let ok=true;for(const o of dots)if(b[0]-2<o[2]&&b[2]+2>o[0]&&b[1]-2<o[3]&&b[3]+2>o[1]){ok=false;break}
-    if(ok||c._onP){c._want=true;c._dot=[b[0]-1,b[1]-1,b[2]+1,b[3]+1];dots.push(c._dot);stopsShown.push(c)}
-    else if(c._end){c._want=true;c._dot=null;c._forced=1;(window.__forced=window.__forced||[]).push(c.name)}}
+  for(const c of items){const b=c._bb;let hi=-1;for(let i=0;i<dots.length;i++){const o=dots[i];if(b[0]-2<o[2]&&b[2]+2>o[0]&&b[1]-2<o[3]&&b[3]+2>o[1]){hi=i;break}}
+    if(hi<0||c._onP||c._on0){c._want=true;c._dot=[b[0]-1,b[1]-1,b[2]+1,b[3]+1];dots.push(c._dot);stopsShown.push(c)}
+    else if(c._end){const h=stopsShown[hi];const A=[...h._P,...c._P];let bi=0,bj=0,bd=-1;for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++){const d=Math.hypot(A[i][0]-A[j][0],A[i][1]-A[j][1]);if(d>bd){bd=d;bi=i;bj=j}}
+      if(bd<=30){const ax=A[bj][0]-A[bi][0],ay=A[bj][1]-A[bi][1];A.sort((p,q)=>(p[0]*ax+p[1]*ay)-(q[0]*ax+q[1]*ay));h._caps=[A];h._P=A;h._pts=[...h._pts,...c._pts];h._r=Math.max(h._r,c._r);
+        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const [x,y] of A){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}const r=h._r,d=dots[hi];d[0]=x0-r-1;d[1]=y0-r-1;d[2]=x1+r+1;d[3]=y1+r+1;h._bb=[x0-r,y0-r,x1+r,y1+r];(window.__merged=window.__merged||[]).push(c.name+'→'+h.name)}
+      else{c._want=true;c._dot=null;(window.__forced=window.__forced||[]).push(c.name)}}}
   // pass 2: draw (animated)
   for(const c of CL){const al=step(c,'_a',c._want?1:0,70);const pk=step(c,'_p',c._onP?1:0,70);if(al<.02||!c._P)continue;
     const P=c._P,r=c._r+pk*2,isT=c.term,onR=c._onR;const multi=c.routes.length>1&&!sel;
@@ -206,7 +256,7 @@ function render(){
   for(const st of (MODE==='metro'?[]:NET.stations)){const [n,x,y]=st;const X=x*sc+tx,Y=y*sc+ty;
     const sd=[X-8,Y-8,X+8,Y+8];let fits=X>-60&&X<VW+60&&Y>-40&&Y<VH+40&&!dots.some(o=>sd[0]<o[2]&&sd[2]>o[0]&&sd[1]<o[3]&&sd[3]>o[1]);
     const label=n+'駅';const w=tw(label,FONTS);const SC=[[X-w/2,Y+9],[X-w/2,Y-23],[X+10,Y-7],[X-10-w,Y-7]];let lb=null;
-    if(fits){dots.push(sd);if(stZ>.01){const ord=st._side!=null?[st._side,0,1,2,3]:[0,1,2,3];for(const i of ord){const c=SC[i];const bb=[c[0]-2,c[1],c[0]+w+2,c[1]+14];if(!hit(bb,5,sd)){lb=bb;st._side=i;break}}}}
+    if(fits){dots.push(sd);if(stZ>.01){let bi=-1,bs=1e9;for(let i=0;i<4;i++){const c=SC[i];const bb=[c[0]-2,c[1],c[0]+w+2,c[1]+14];if(hit(bb,5,sd))continue;const sco=lineHit(bb)+i*.2-(i===st._side?1.5:0);if(sco<bs){bs=sco;bi=i;lb=bb}}if(bi>=0)st._side=bi}}
     const ia=step(st,'_i',fits?1:0,80),la=step(st,'_a',lb?stZ:0,90);
     if(ia>.02){g.globalAlpha=ia;g.beginPath();g.roundRect(X-5.5,Y-5.5,11,11,3);g.fillStyle=COL.stn;g.fill();g.lineWidth=1.2;g.strokeStyle='#fff';g.stroke();
       g.fillStyle='#fff';g.fillRect(X-2.5,Y-2.8,5,3.6);g.fillRect(X-3,Y+1.4,1.4,1.4);g.fillRect(X+1.6,Y+1.4,1.4,1.4)}
@@ -214,25 +264,29 @@ function render(){
     g.globalAlpha=1;if(lb)boxes.push(lb)}
   // ---- stop labels: priority + hysteresis + fade
   g.textAlign='left';
-  const pc=pick!=null?CL[S[pick].cl]:null;
+  const pc=pick!=null?CL[S[pick].cl]:null,pc0=pick0!=null?CL[S[pick0].cl]:null;
   const nameOf=c=>{if(sel){const m=c.m.find(i=>S[i].routes.includes(sel));return S[m??c.m[0]].name}return c.name};
-  const prio=c=>(c===pc?1e6:0)+(c._lv>0.5?500:0)+(c.term?300:0)+c.routes.length*40;
+  const prio=c=>(c===pc?1e6:0)+(c===pc0?9e5:0)+(c._lv>0.5?500:0)+(c.term?300:0)+c.routes.length*40;
   let cand;
   if(plan){cand=plan.order.map(i=>CL[i])}
   else if(sel){cand=[...new Set(RK[sel].order.map(i=>CL[S[i].cl]))]}
-  else if(pc)cand=[pc];
+  else if(pc)cand=pc0?[pc,pc0]:[pc];
   else{const tier=z<1.7?(c=>c.term):z<2.8?(c=>c.term||c.routes.length>=2||c.m.some(i=>S[i].allR.length>=2)):(()=>true);cand=stopsShown.filter(tier)}
   if(pc&&!cand.includes(pc))cand.unshift(pc);
   cand.sort((a,b)=>prio(b)-prio(a));
   const placed=new Set(),names=new Set();
   const cbox=c=>c._dot||(()=>{const X=c.c[0]*sc+tx,Y=c.c[1]*sc+ty;return [X-3,Y-3,X+3,Y+3]})();
-  const cands=(c,w,h,o)=>{const d=cbox(c);const my=(d[1]+d[3])/2,mx=(d[0]+d[2])/2;return [[d[2]+o-2,my-h/2],[d[0]-o+2-w,my-h/2],[mx-w/2,d[1]-h-o+3],[mx-w/2,d[3]+o-3]]};
+  const cands=(c,w,h,o)=>{const d=cbox(c);const my=(d[1]+d[3])/2,mx=(d[0]+d[2])/2;return [[d[2]+o-2,my-h/2],[d[0]-o+2-w,my-h/2],[mx-w/2,d[1]-h-o+3],[mx-w/2,d[3]+o-3],[d[2]+o-4,d[1]-h+4],[d[2]+o-4,d[3]-4],[d[0]-o+4-w,d[1]-h+4],[d[0]-o+4-w,d[3]-4]]};
+  const pinBox=PIN?[PIN.x-16,PIN.y-PIN.r-46,PIN.x+16,PIN.y-PIN.r-2]:null;if(pinBox)boxes.push(pinBox);
   for(const c of cand){const nm=nameOf(c);if(!sel&&!plan&&names.has(nm))continue;const X=c.c[0]*sc+tx,Y=c.c[1]*sc+ty;if(X<-100||X>VW+100||Y<-30||Y>VH+30)continue;
-    const big=c===pc;const f=big?FONTB:FONT;const w=tw(nm,f),h=big?16:14;const C=cands(c,w,h,big?9:6.5);
-    const ord=c._side!=null?[c._side,...[0,1,2,3].filter(i=>i!==c._side)]:[0,1,2,3];
-    for(const i of ord){const [bx,by]=C[i];const bb=[bx,by,bx+w,by+h];if(bx<6||bx+w>VW-6)continue;if(!big&&hit(bb,5,c._dot))continue;boxes.push(bb);c._side=i;placed.add(c);names.add(nm);c._nm=nm;break}}
+    const big=c===pc||c===pc0;const f=big?FONTB:FONT;const w=tw(nm,f),h=big?16:14;const C=cands(c,w,h,big?9:6.5);
+    let bi=-1,bs=1e9,bbb=null;
+    for(let i=0;i<8;i++){const [bx,by]=C[i];const bb=[bx,by,bx+w,by+h];if(bx<6||bx+w>VW-6)continue;if(big?(pinBox&&ov(bb,pinBox,1)):hit(bb,5,c._dot))continue;
+      const sco=lineHit(bb)+i*.3-(i===c._side?2:0);if(sco<bs){bs=sco;bi=i;bbb=bb}}
+    if(bi<0)continue;if(!big&&!sel&&!plan&&z<2.8&&lineHit(bbb)>((c.term||c.routes.length>2)?Math.max(2,Math.round(w*h/(GC*GC)*.2)):2))continue;
+    boxes.push(bbb);c._side=bi;placed.add(c);names.add(nm);c._nm=nm}
   for(const c of CL){const tgt=placed.has(c)?1:0;if(c._lv==null){if(!tgt)continue;c._lv=0}const al=step(c,'_lv',tgt,tgt?90:60);if(al<.02){if(!tgt)c._side=null;continue}
-    const big=c===pc;const f=big?FONTB:FONT;const nm=c._nm||c.name;const w=tw(nm,f),h=big?16:14;const [bx,by]=cands(c,w,h,big?9:6.5)[c._side??0];
+    const big=c===pc||c===pc0;const f=big?FONTB:FONT;const nm=c._nm||c.name;const w=tw(nm,f),h=big?16:14;const [bx,by]=cands(c,w,h,big?9:6.5)[c._side??0];
     g.globalAlpha=al;g.font=f;g.textAlign='left';g.lineJoin='round';g.lineWidth=3.2;g.strokeStyle=COL.halo;g.strokeText(nm,bx,by+h-3.5);g.fillStyle=big?COL.labelBig:COL.label;g.fillText(nm,bx,by+h-3.5)}
   if(PIN){const k=PIN.k,s=.6+.4*k,x=PIN.x,y=PIN.y-PIN.r-6;g.save();g.translate(x,y);g.scale(s,s);g.globalAlpha=Math.min(1,k*1.4);
     g.shadowColor='rgba(0,0,0,.28)';g.shadowBlur=10;g.shadowOffsetY=3;g.fillStyle='#0a84ff';g.beginPath();g.moveTo(0,0);g.bezierCurveTo(-3,-7,-13,-10,-13,-22);g.arc(0,-22,13,Math.PI,0);g.bezierCurveTo(13,-10,3,-7,0,0);g.fill();g.shadowColor='transparent';
@@ -241,30 +295,47 @@ function render(){
   // scale bar (approx 1pt ≈ 6.9m)
   const mPerPx=6.9/sc;const nice=[50,100,200,250,500,1000,2000,5000];let L=nice[0];for(const n of nice){if(n/mPerPx<110)L=n}
   document.getElementById('sb').style.width=(L/mPerPx)+'px';document.getElementById('sl').textContent=L>=1000?(L/1000)+' km':L+' m';
+  if(raw){sc=raw[0];tx=raw[1];ty=raw[2]}
 }
-// ---------- input: pointer pan / pinch / inertia
-const ptrs=new Map();let dragging=false,pinching=false,moved=0,last=null,vel=[0,0],lastT=0,pinch0=null,inertia=null,downAt=null,lastTap=0;
-cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});anim=null;inertia=null;
-  if(ptrs.size===1){moved=0;last={x:e.clientX,y:e.clientY};lastT=performance.now();vel=[0,0];downAt={x:e.clientX,y:e.clientY}}
-  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};pinching=true;moved=99}});
-cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;p.x=e.clientX;p.y=e.clientY;
+// ---------- input: pointer pan / pinch / inertia (rubber-banded, like a native map view)
+const ptrs=new Map();let dragging=false,pinching=false,moved=0,last=null,vel=[0,0],lastT=0,pinch0=null,inertia=null,downAt=null,lastTap=0,lastTapAt=null,dtz=null,twoTap=null;
+function inBounds(){const c=clampedCam();return Math.abs(c[1]-tx)<.5&&Math.abs(c[2]-ty)<.5}
+cv.addEventListener('pointerdown',e=>{try{cv.setPointerCapture(e.pointerId)}catch(_){}ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(anim&&!springing){anim=null}if(springing){anim=null;springing=false}inertia=null;
+  if(ptrs.size===1){moved=0;last={x:e.clientX,y:e.clientY};lastT=performance.now();vel=[0,0];downAt={x:e.clientX,y:e.clientY,t:lastT};twoTap=null;
+    // second tap held down: drag up/down to zoom
+    dtz=(lastT-lastTap<320&&lastTapAt&&Math.hypot(e.clientX-lastTapAt.x,e.clientY-lastTapAt.y)<36)?{y:e.clientY,x:e.clientX,s:sc,on:false}:null}
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};pinching=true;dtz=null;
+    twoTap=(performance.now()-(downAt?downAt.t:0)<260&&moved<=6)?{t:performance.now(),m:pinch0.m,mv:0}:null;moved=99;draw()}});
+cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;const ox=p.x,oy=p.y;p.x=e.clientX;p.y=e.clientY;
   if(ptrs.size>=2&&pinch0){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-    tx+=m.x-pinch0.m.x;ty+=m.y-pinch0.m.y;zoomAt(d/pinch0.d,m.x,m.y);pinch0={d,m};draw();return}
+    if(twoTap)twoTap.mv+=Math.abs(e.clientX-ox)+Math.abs(e.clientY-oy);
+    tx+=m.x-pinch0.m.x;ty+=m.y-pinch0.m.y;zoomAt(d/pinch0.d,m.x,m.y,true);pinch0={d,m};draw();return}
+  if(ptrs.size===1&&dtz){const dy=e.clientY-dtz.y;if(!dtz.on&&Math.abs(dy)>6){dtz.on=true;moved=99}
+    if(dtz.on){const f=dtz.s*Math.exp(-dy*.0085)/sc;zoomAt(f,dtz.x,dtz.y,true);draw()}return}
   if(ptrs.size===1&&last){const dx=e.clientX-last.x,dy=e.clientY-last.y;const now=performance.now();moved+=Math.abs(dx)+Math.abs(dy);
-    if(moved>6){dragging=true;cv.classList.add('drag');tx+=dx;ty+=dy;const dt=Math.max(1,now-lastT);vel=[vel[0]*.6+dx/dt*.4*16,vel[1]*.6+dy/dt*.4*16];draw()}
+    if(moved>6){if(!dragging){dragging=true;cv.classList.add('drag')}tx+=dx;ty+=dy;const dt=Math.max(1,now-lastT);vel=[vel[0]*.6+dx/dt*.4*16,vel[1]*.6+dy/dt*.4*16];draw()}
     last={x:e.clientX,y:e.clientY};lastT=now}});
 function endPtr(e){if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);
-  if(ptrs.size===1){const v=[...ptrs.values()][0];last={x:v.x,y:v.y};pinch0=null;return}
-  if(ptrs.size===0){cv.classList.remove('drag');const wasDrag=dragging;dragging=false;pinch0=null;
-    if(pinching){pinching=false;scheduleBase();draw();return}
-    if(wasDrag&&performance.now()-lastT<80&&Math.hypot(vel[0],vel[1])>1.5){let v=[...vel],t0=performance.now();
-      inertia=t=>{const dt=Math.min(32,t-t0);t0=t;tx+=v[0]*dt/16;ty+=v[1]*dt/16;const k=Math.pow(.92,dt/16);v[0]*=k;v[1]*=k;if(Math.hypot(v[0],v[1])<.2){inertia=null;scheduleBase()}};draw()}
-    else if(!wasDrag&&moved<=6&&e.type==='pointerup'){const now=performance.now();
-      if(now-lastTap<300){lastTap=0;const f=1.8;const s0=sc;const ns=Math.min(maxS(),sc*f);const k=ns/sc;flyTo(ns,e.clientX-(e.clientX-tx)*k,e.clientY-(e.clientY-ty)*k,true)}
-      else{lastTap=now;tap(e.clientX,e.clientY)}}
-    scheduleBase()}}
+  if(ptrs.size===1){const v=[...ptrs.values()][0];last={x:v.x,y:v.y};lastT=performance.now();vel=[0,0];pinch0=null;return}
+  if(ptrs.size===0){cv.classList.remove('drag');const wasDrag=dragging,wasPinch=pinching,wasDtz=dtz&&dtz.on;
+    // adopt what is on screen, then let go
+    if(wasDrag||wasPinch||wasDtz){const d=rubberCam();sc=d[0];tx=d[1];ty=d[2]}
+    dragging=false;pinching=false;pinch0=null;const hadDtz=dtz;dtz=null;
+    if(wasPinch){if(twoTap&&e.type==='pointerup'&&performance.now()-twoTap.t<300&&twoTap.mv<14){const ns=Math.max(minS(),sc/2),k=ns/sc;flyTo(ns,twoTap.m.x-(twoTap.m.x-tx)*k,twoTap.m.y-(twoTap.m.y-ty)*k,true)}else settle();twoTap=null;scheduleBase();draw();return}
+    if(wasDtz){settle();lastTap=0;scheduleBase();draw();return}
+    if(wasDrag){const fast=performance.now()-lastT<80&&Math.hypot(vel[0],vel[1])>1.5;
+      if(!inBounds()||!fast){settle()}
+      else{let v=[...vel],t0=performance.now();
+        inertia=t=>{const dt=Math.min(32,t-t0);t0=t;tx+=v[0]*dt/16;ty+=v[1]*dt/16;const k=Math.pow(.955,dt/16);v[0]*=k;v[1]*=k;
+          if(!inBounds()){inertia=null;const d=rubberCam();sc=d[0];tx=d[1];ty=d[2];settle();scheduleBase();return}
+          if(Math.hypot(v[0],v[1])<.12){inertia=null;scheduleBase()}};draw()}}
+    else if(moved<=6&&e.type==='pointerup'){const now=performance.now();
+      if(hadDtz){lastTap=0;const ns=Math.min(maxS(),sc*2),k=ns/sc;flyTo(ns,e.clientX-(e.clientX-tx)*k,e.clientY-(e.clientY-ty)*k,true)}
+      else{lastTap=now;lastTapAt={x:e.clientX,y:e.clientY};tap(e.clientX,e.clientY)}}
+    scheduleBase();draw()}}
 cv.addEventListener('pointerup',endPtr);cv.addEventListener('pointercancel',endPtr);
-cv.addEventListener('wheel',e=>{e.preventDefault();anim=null;inertia=null;
+cv.addEventListener('wheel',e=>{e.preventDefault();if(anim){anim=null;springing=false}inertia=null;
   const mouseWheel=e.deltaMode===1||(e.deltaX===0&&Math.abs(e.deltaY)>=40&&Number.isInteger(e.deltaY));
   if(e.ctrlKey||mouseWheel){zoomAt(Math.exp(-e.deltaY*(e.ctrlKey?.012:.0022)*(e.deltaMode===1?16:1)),e.clientX,e.clientY)}
   else{tx-=e.deltaX;ty-=e.deltaY}draw();scheduleBase()},{passive:false});

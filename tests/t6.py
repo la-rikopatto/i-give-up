@@ -12,7 +12,7 @@ async def main():
         m.on('pageerror',lambda e:errs.append(str(e)))
         await m.goto(U);await m.wait_for_timeout(900)
         for mode in ['map','metro']:
-            if mode=='metro': await m.click('#mode');await m.wait_for_timeout(900)
+            if mode=='metro': await m.evaluate("setMode('metro',true);reframe(false)");await m.wait_for_timeout(900)
             await m.evaluate("fitBox(BOX,false)");await m.wait_for_timeout(300)
             await m.evaluate("zoomAt(9/(sc/fitS),195,230);draw()");await m.wait_for_timeout(500)
             # sweep whole network

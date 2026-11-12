@@ -27,7 +27,9 @@
   --shadow:0 0 0 .5px rgba(255,255,255,.1),0 10px 36px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
+input{-webkit-user-select:text;user-select:text}
+#sat{position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden}#sab{position:fixed;bottom:0;left:0;width:0;height:env(safe-area-inset-bottom,0px);visibility:hidden}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer;-webkit-user-select:none;user-select:none}
 #map{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block;cursor:grab}
 #map.drag{cursor:grabbing}
@@ -36,11 +38,13 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 #panel{position:fixed;left:14px;top:14px;bottom:14px;width:376px;border-radius:20px;display:flex;flex-direction:column;overflow:hidden;z-index:10}
 .grab{display:none}
 #stack{position:relative;flex:1;min-height:0;overflow:hidden}
-.page{position:absolute;inset:0;display:flex;flex-direction:column;will-change:transform,opacity;transition:transform .46s var(--ease),opacity .46s var(--ease)}
+.page{position:absolute;inset:0;display:flex;flex-direction:column;will-change:transform;clip-path:inset(0 0 0 0);transition:transform .46s var(--ease),clip-path .46s var(--ease),opacity .46s var(--ease)}
 .page.enter{transform:translateX(100%)}
-.page.behind{transform:translateX(-28%);opacity:0;pointer-events:none}
+.page.behind{transform:translateX(-28%);clip-path:inset(0 72% 0 0);opacity:.55;pointer-events:none}
 .page.leave{transform:translateX(100%)}
-.nav{flex:none;display:flex;align-items:center;gap:10px;padding:14px 14px 10px;min-height:58px;touch-action:none}
+.page.dragx{transition:none}
+.page.scrolled .nav{box-shadow:0 .5px 0 var(--sep)}
+.nav{flex:none;display:flex;align-items:center;gap:10px;padding:14px 14px 10px;min-height:58px;touch-action:none;transition:box-shadow .2s}
 .nav h2{flex:1;min-width:0;margin:0 0 0 4px;font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav .sub{display:block;font-size:13px;font-weight:400;color:var(--mute);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ic{flex:none;width:32px;height:32px;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--ink2);transition:transform .15s,background .15s}
@@ -52,6 +56,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .search svg{flex:none;opacity:.6}
 .search input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:16px;color:var(--ink);min-width:0}
 .search input::placeholder{color:var(--mute)}
+.search .clr{flex:none;width:18px;height:18px;border-radius:50%;background:var(--mute);color:var(--bg);display:grid;place-items:center;opacity:.75}.search .clr[hidden]{display:none}.search .clr svg{width:10px;height:10px;opacity:1}
 .txt{color:var(--blue);font-size:16px;padding:6px 2px}
 .seg{display:flex;background:var(--fill);border-radius:9px;padding:2px;margin:2px 14px 0;position:relative}
 .seg button{flex:1;height:30px;border-radius:7px;font-size:13px;font-weight:500;color:var(--ink2);position:relative;z-index:1;transition:color .2s}
@@ -71,8 +76,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .rt{flex:1;min-width:0}
 .rt b{display:block;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rt>span{display:block;font-size:13px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-.chev{flex:none;color:var(--mute);opacity:.6;font-size:18px}
-.tag{font-size:11px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent);border-radius:5px;padding:1px 6px;margin-left:5px;vertical-align:1px}
+.chev{flex:none;color:var(--mute);opacity:.55;width:8px;height:14px}
+.tag{font-size:11px;font-weight:600;color:color-mix(in srgb,var(--c) 62%,var(--ink));background:color-mix(in srgb,var(--c) 18%,transparent);border-radius:5px;padding:1px 6px;margin-left:5px;vertical-align:1px}
 .dots{display:flex;gap:3px;flex:none;max-width:38%;flex-wrap:wrap;justify-content:flex-end}
 .dots i{width:9px;height:9px;border-radius:50%;background:var(--c)}
 .acts{display:flex;gap:8px;padding:2px 12px 0}
@@ -126,20 +131,33 @@ ol.tl li.mini .sn b{font-size:13.5px;font-weight:500;color:var(--ink2)}
 .xf::before{content:"";position:absolute;left:23px;top:0;bottom:0;border-left:2px dotted var(--mute);opacity:.6}
 .lh{display:flex;align-items:center;gap:10px;padding:10px 14px 4px}
 .lh b{font-size:15px;font-weight:700}.lh span{font-size:13px;color:var(--mute)}
+/* map settings card */
+.tiles{display:flex;gap:12px;padding:4px 14px 2px}
+.tile{flex:1;text-align:center;font-size:13px;font-weight:500;color:var(--ink2)}
+.tile .pv{display:block;border-radius:12px;overflow:hidden;aspect-ratio:1.42;box-shadow:0 0 0 .5px var(--sep);transition:box-shadow .2s,transform .15s;margin-bottom:7px}
+.tile .pv svg{display:block;width:100%;height:100%}
+.tile:active .pv{transform:scale(.97)}
+.tile.on{color:var(--blue);font-weight:600}
+.tile.on .pv{box-shadow:0 0 0 3px var(--blue)}
+.seg.wide{margin:0 14px}
+.hint{font-size:12.5px;color:var(--mute);line-height:1.55;padding:10px 18px 0}
 /* map controls */
-#ctrl{position:fixed;right:14px;top:14px;z-index:9;display:flex;flex-direction:column;gap:10px}
+#ctrl{position:fixed;right:14px;top:14px;z-index:9;display:flex;flex-direction:column;gap:10px;transition:opacity .25s}
+#ctrl.off{opacity:0;pointer-events:none}
+#dim{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:9;transition:opacity .52s var(--ease)}
+body.sheet-drag #dim{transition:none}
 .grp{border-radius:13px;overflow:hidden;display:flex;flex-direction:column}
 .grp button{width:44px;height:44px;display:grid;place-items:center;color:var(--ink2);transition:background .12s}
 .grp button+button{border-top:.5px solid var(--sep)}
 .grp button:active{background:var(--press)}
 .grp svg{width:20px;height:20px}
-#scale{position:fixed;right:16px;bottom:26px;z-index:8;font-size:11px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;align-items:flex-end;gap:2px;pointer-events:none}
+#scale{position:fixed;right:16px;bottom:26px;z-index:8;font-size:11px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;align-items:flex-end;gap:2px;pointer-events:none;text-shadow:0 0 3px var(--bg),0 0 3px var(--bg)}
 #scale i{display:block;height:4px;border:1.5px solid var(--ink2);border-top:0}
 #attr{position:fixed;right:12px;bottom:8px;z-index:8;font-size:10px;color:var(--mute)}
 #toast{position:fixed;left:50%;top:18px;transform:translate(-50%,-80px);z-index:30;padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;transition:transform .45s var(--ease);pointer-events:none;white-space:nowrap}
 #toast.on{transform:translate(-50%,0)}
 @media (max-width:720px){
-  #panel{left:0;right:0;top:54px;bottom:auto;width:auto;height:calc(100% - 54px);border-radius:18px 18px 0 0;transform:translate3d(0,var(--ty,56%),0);transition:transform .52s var(--ease);will-change:transform}
+  #panel{left:0;right:0;top:var(--topgap,54px);bottom:auto;width:auto;height:calc(100% - var(--topgap,54px));border-radius:16px 16px 0 0;transform:translate3d(0,var(--ty,56%),0);transition:transform .52s var(--ease);will-change:transform}
   #panel.dragging{transition:none}
   #panel.locked .scroll{overflow:hidden}
   .scroll{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
@@ -148,20 +166,22 @@ ol.tl li.mini .sn b{font-size:13.5px;font-weight:500;color:var(--ink2)}
   .nav{padding-top:2px;min-height:50px}
   #ctrl{top:calc(10px + env(safe-area-inset-top));right:10px}
   #ctrl .zoom{display:none}
-  #scale{bottom:auto;right:64px;top:calc(18px + env(safe-area-inset-top))}
+  #scale{bottom:auto;right:auto;left:14px;top:calc(14px + env(safe-area-inset-top));align-items:flex-start;opacity:0;transition:opacity .35s}
+  #scale.on{opacity:1;transition:opacity .12s}
   #attr{display:none}
   #toast{top:calc(12px + env(safe-area-inset-top))}
 }
-@media (prefers-reduced-motion:reduce){.page,#panel,.seg i{transition-duration:.01s}}
+@media (prefers-reduced-motion:reduce){.page,#panel,.seg i,#dim{transition-duration:.01s}}
 </style>
 </head>
 <body>
 <canvas id="map"></canvas>
 <div id="scale"><span id="sl"></span><i id="sb"></i></div>
 <div id="ctrl">
-  <div class="grp glass"><button id="mode" aria-label="地図と路線図を切り替え"></button><button id="theme" aria-label="外観を切り替え"></button><button id="zfit" aria-label="全体を表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
+  <div class="grp glass"><button id="mode" aria-label="マップの表示設定"></button><button id="zfit" aria-label="全体を表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
   <div class="grp glass zoom"><button id="zin" aria-label="拡大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button id="zout" aria-label="縮小"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button></div>
 </div>
+<div id="dim"></div><div id="sat"></div><div id="sab"></div>
 <aside id="panel" class="glass"><div class="grab" id="grab"></div><div id="stack"></div></aside>
 <div id="attr">地図・路線：坂戸市／鶴ヶ島市 路線図より作成</div>
 <div id="toast" class="glass"></div>

@@ -15,7 +15,7 @@ async def main():
         m.on('pageerror',lambda e:errs.append(str(e)))
         await m.goto(U);await m.wait_for_timeout(900)
         for mode in ['map','metro']:
-            if mode=='metro': await m.click('#mode');await m.wait_for_timeout(900);await m.screenshot(path='m0.png')
+            if mode=='metro': await m.evaluate("setMode('metro',true);reframe(false)");await m.wait_for_timeout(900);await m.screenshot(path='m0.png')
             miss=[]
             for k in await m.evaluate("R.map(r=>r.k)"):
                 await m.evaluate(f"selectRoute('{k}')");await m.wait_for_timeout(750)
